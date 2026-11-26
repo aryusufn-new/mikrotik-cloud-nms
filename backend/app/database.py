@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
 
-DB_PATH = os.environ.get("NMS_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "nms.db"))
+DB_PATH = os.environ.get("NMS_DB_PATH") or os.environ.get("DATABASE_PATH") or os.path.join(os.path.dirname(__file__), "..", "nms.db")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
