@@ -20,13 +20,15 @@ jobs:
           script: |
             set -e
 
+            APP_DIR="$HOME/mikrotik-cloud-nms"
+
             # Clone atau pull repo
-            if [ ! -d /opt/mikrotik-cloud-nms ]; then
-              git clone https://github.com/aryusufn-new/mikrotik-cloud-nms.git /opt/mikrotik-cloud-nms
-              cd /opt/mikrotik-cloud-nms
+            if [ ! -d "$APP_DIR" ]; then
+              git clone https://github.com/aryusufn-new/mikrotik-cloud-nms.git "$APP_DIR"
+              cd "$APP_DIR"
               git checkout dev
             else
-              cd /opt/mikrotik-cloud-nms
+              cd "$APP_DIR"
               git fetch origin dev
               git reset --hard origin/dev
             fi
