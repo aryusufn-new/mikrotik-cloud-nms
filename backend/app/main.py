@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 
 from . import database as db
-from .mikrotik_client import probe_router, fetch_mikrotik_resource, SimulatedMikrotikShell
+from .mikrotik_client import probe_router, fetch_mikrotik_resource, fetch_mikrotik_resource_detailed, SimulatedMikrotikShell
 
 try:
     import paramiko
@@ -97,6 +97,7 @@ class DeviceCreate(BaseModel):
 
 
 class DeviceProbeRequest(BaseModel):
+    device_id: Optional[int] = None
     host: Optional[str] = None
     ip_address: Optional[str] = None
     api_port: Optional[int] = 8728
@@ -302,20 +303,28 @@ def probe_device_resource_endpoint(body: DeviceProbeRequest, user: dict = Depend
     if not target_host:
         raise HTTPException(status_code=400, detail="IP Manajemen / Host wajib diisi")
 
+    password = body.password or ""
+    if not password and body.device_id:
+        existing = db.get_device(body.device_id, user["id"])
+        if existing:
+            password = existing.get("password") or ""
+
     probe = probe_router(target_host, body.api_port or 8728, body.ssh_port or 22, body.winbox_port or 8291)
     resource = None
+    api_error = None
     if probe["api_port"]:
-        resource = fetch_mikrotik_resource(
+        resource, api_error = fetch_mikrotik_resource_detailed(
             target_host,
             port=body.api_port or 8728,
             username=body.username or "admin",
-            password=body.password or "",
+            password=password,
         )
 
     return {
         "online": probe["online"],
         "ports": probe,
         "resource": resource,
+        "error": api_error,
     }
 
 

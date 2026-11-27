@@ -58,17 +58,23 @@ def _format_uptime(raw_uptime: str) -> str:
     return " ".join(parts) if parts else raw_uptime
 
 
-def fetch_mikrotik_resource(
+def fetch_mikrotik_resource_detailed(
     host: str,
     port: int = 8728,
     username: str = "admin",
     password: str = "",
-) -> Optional[Dict[str, Any]]:
-    """Query /system/resource and /system/identity from MikroTik RouterOS API."""
+) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Query /system/resource and /system/identity from MikroTik RouterOS API. Returns (data, error)."""
     if not routeros_api or not host:
-        return None
+        return None, "library routeros_api tidak tersedia atau host kosong"
 
-    for plaintext in (True, False):
+    last_err = None
+    attempts = [
+        {"plaintext": True, "use_ssl": False},
+        {"plaintext": False, "use_ssl": False},
+        {"plaintext": True, "use_ssl": True},
+    ]
+    for opt in attempts:
         pool = None
         try:
             pool = routeros_api.RouterOsApiPool(
@@ -76,7 +82,9 @@ def fetch_mikrotik_resource(
                 username=username or "admin",
                 password=password or "",
                 port=int(port or 8728),
-                plaintext_login=plaintext,
+                plaintext_login=opt["plaintext"],
+                use_ssl=opt["use_ssl"],
+                ssl_verify=False,
             )
             api = pool.get_api()
             res_list = api.get_resource("/system/resource").get()
@@ -112,8 +120,9 @@ def fetch_mikrotik_resource(
                 "ram_usage": max(0, min(100, ram_pct)),
                 "disk_usage": max(0, min(100, disk_pct)),
                 "identity": identity_name,
-            }
-        except Exception:
+            }, None
+        except Exception as exc:
+            last_err = str(exc)
             continue
         finally:
             if pool:
@@ -121,7 +130,17 @@ def fetch_mikrotik_resource(
                     pool.disconnect()
                 except Exception:
                     pass
-    return None
+    return None, last_err
+
+
+def fetch_mikrotik_resource(
+    host: str,
+    port: int = 8728,
+    username: str = "admin",
+    password: str = "",
+) -> Optional[Dict[str, Any]]:
+    data, _ = fetch_mikrotik_resource_detailed(host, port=port, username=username, password=password)
+    return data
 
 
 ROUTEROS_BANNER = """

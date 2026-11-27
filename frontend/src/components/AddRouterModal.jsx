@@ -82,6 +82,7 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess, initialDevi
     setProbeResult(null);
     try {
       const res = await probeDeviceResource({
+        device_id: initialDevice?.id || null,
         host: formData.ip_address,
         ip_address: formData.ip_address,
         api_port: formData.api_port,
@@ -190,7 +191,12 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess, initialDevi
                     </p>
                   </>
                 ) : probeResult.online ? (
-                  <p>Host terjangkau, tapi API port {formData.api_port} tidak merespons atau login API gagal. Cek username/password/API service.</p>
+                  <div>
+                    <p>Host terjangkau, tapi API port {formData.api_port} tidak merespons atau login API gagal.</p>
+                    {probeResult.error && (
+                      <p className="text-[11px] font-mono mt-1 opacity-80">Detail: {probeResult.error}</p>
+                    )}
+                  </div>
                 ) : (
                   <p>Router tidak terjangkau pada port API/SSH/WinBox.</p>
                 )}
