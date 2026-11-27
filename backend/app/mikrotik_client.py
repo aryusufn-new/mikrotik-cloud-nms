@@ -10,6 +10,11 @@ try:
 except ImportError:
     paramiko = None
 
+try:
+    import routeros_api
+except ImportError:
+    routeros_api = None
+
 
 def test_tcp_port(host: str, port: int, timeout: float = 1.5) -> bool:
     try:
@@ -32,6 +37,91 @@ def probe_router(host: str, api_port: int = 8728, ssh_port: int = 22, winbox_por
         "ssh_port": ssh_ok,
         "winbox_port": winbox_ok,
     }
+
+
+def _format_uptime(raw_uptime: str) -> str:
+    """Convert RouterOS uptime like '1w2d5h44m10s' into readable Indonesian string."""
+    if not raw_uptime:
+        return "0 mnt"
+    weeks = re.search(r"(\d+)w", raw_uptime)
+    days = re.search(r"(\d+)d", raw_uptime)
+    hours = re.search(r"(\d+)h", raw_uptime)
+    mins = re.search(r"(\d+)m", raw_uptime)
+    total_days = (int(weeks.group(1)) * 7 if weeks else 0) + (int(days.group(1)) if days else 0)
+    parts = []
+    if total_days:
+        parts.append(f"{total_days} hari")
+    if hours:
+        parts.append(f"{int(hours.group(1))} jam")
+    if mins:
+        parts.append(f"{int(mins.group(1))} mnt")
+    return " ".join(parts) if parts else raw_uptime
+
+
+def fetch_mikrotik_resource(
+    host: str,
+    port: int = 8728,
+    username: str = "admin",
+    password: str = "",
+) -> Optional[Dict[str, Any]]:
+    """Query /system/resource and /system/identity from MikroTik RouterOS API."""
+    if not routeros_api or not host:
+        return None
+
+    for plaintext in (True, False):
+        pool = None
+        try:
+            pool = routeros_api.RouterOsApiPool(
+                host,
+                username=username or "admin",
+                password=password or "",
+                port=int(port or 8728),
+                plaintext_login=plaintext,
+            )
+            api = pool.get_api()
+            res_list = api.get_resource("/system/resource").get()
+            if not res_list:
+                continue
+            res = res_list[0]
+
+            identity_name = None
+            try:
+                id_list = api.get_resource("/system/identity").get()
+                if id_list:
+                    identity_name = id_list[0].get("name")
+            except Exception:
+                pass
+
+            total_mem = int(res.get("total-memory") or 0)
+            free_mem = int(res.get("free-memory") or 0)
+            ram_pct = round(((total_mem - free_mem) / total_mem) * 100) if total_mem > 0 else 0
+
+            total_hdd = int(res.get("total-hdd-space") or 0)
+            free_hdd = int(res.get("free-hdd-space") or 0)
+            disk_pct = round(((total_hdd - free_hdd) / total_hdd) * 100) if total_hdd > 0 else 0
+
+            board_name = res.get("board-name") or res.get("platform") or "MikroTik Router"
+            return {
+                "model": board_name,
+                "board_name": board_name,
+                "platform": res.get("platform", ""),
+                "architecture": res.get("architecture-name", ""),
+                "routeros_version": res.get("version", "7.x"),
+                "uptime": _format_uptime(res.get("uptime", "")),
+                "cpu_load": int(res.get("cpu-load") or 0),
+                "ram_usage": max(0, min(100, ram_pct)),
+                "disk_usage": max(0, min(100, disk_pct)),
+                "identity": identity_name,
+            }
+        except Exception:
+            continue
+        finally:
+            if pool:
+                try:
+                    pool.disconnect()
+                except Exception:
+                    pass
+    return None
 
 
 ROUTEROS_BANNER = """

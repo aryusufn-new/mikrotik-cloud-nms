@@ -13,7 +13,8 @@ export const getDevice = (id) => api.get(`/devices/${id}`);
 export const createDevice = (data) => api.post('/devices', data);
 export const updateDevice = (id, data) => api.put(`/devices/${id}`, data);
 export const deleteDevice = (id) => api.delete(`/devices/${id}`);
-export const testDeviceConnection = (id) => api.post(`/devices/${id}/test-connection`);
+export const testDeviceConnection = (id) => api.post(`/devices/${id}/test`);
+export const probeDeviceResource = (data) => api.post('/devices/probe-resource', data);
 
 export const getGroups = () => api.get('/groups');
 export const createGroup = (data) => api.post('/groups', data);

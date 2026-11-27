@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { X, Server, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { createDevice, getGroups } from '../api';
+import { X, Server, CheckCircle2, AlertCircle, Loader2, Radar } from 'lucide-react';
+import { createDevice, getGroups, probeDeviceResource } from '../api';
 
 export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState(null);
   const [error, setError] = useState(null);
 
   const [formData, setFormData] = useState({
     name: '',
-    model: 'CCR2004-16G-2S+',
+    model: '',
     ip_address: '',
     api_port: 8728,
     ssh_port: 22,
@@ -21,6 +23,8 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
 
   useEffect(() => {
     if (isOpen) {
+      setProbeResult(null);
+      setError(null);
       getGroups().then((res) => {
         if (res.data && res.data.groups) {
           setGroups(res.data.groups);
@@ -33,6 +37,41 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleProbe = async () => {
+    if (!formData.ip_address.trim()) {
+      setError('Isi IP Manajemen / Host terlebih dahulu untuk deteksi.');
+      return;
+    }
+    setProbing(true);
+    setError(null);
+    setProbeResult(null);
+    try {
+      const res = await probeDeviceResource({
+        host: formData.ip_address,
+        ip_address: formData.ip_address,
+        api_port: formData.api_port,
+        ssh_port: formData.ssh_port,
+        winbox_port: formData.winbox_port,
+        username: formData.username,
+        password: formData.password,
+      });
+      setProbeResult(res.data);
+      if (res.data?.resource) {
+        const r = res.data.resource;
+        setFormData(prev => ({
+          ...prev,
+          model: r.model || prev.model,
+          name: prev.name.trim() ? prev.name : (r.identity || prev.name),
+        }));
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : 'Gagal mendeteksi resource router.');
+    } finally {
+      setProbing(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -69,7 +108,7 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-800">Tambah Router Baru</h2>
-              <p className="text-xs text-slate-500">Daftarkan router MikroTik ke Cloud NMS</p>
+              <p className="text-xs text-slate-500">Model & resource terdeteksi otomatis dari RouterOS API</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
@@ -85,35 +124,31 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Perangkat *</label>
-              <input
-                type="text"
-                required
-                placeholder="mis. Core-Router-01"
-                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734] focus:ring-1 focus:ring-[#d96734]"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              />
+          {probeResult && (
+            <div className={`p-3 rounded-xl text-xs border flex items-start gap-2 ${
+              probeResult.resource
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : probeResult.online
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : 'bg-red-50 text-red-700 border-red-200'
+            }`}>
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <div>
+                {probeResult.resource ? (
+                  <>
+                    <p className="font-bold">Terdeteksi: {probeResult.resource.model} ({probeResult.resource.identity || 'MikroTik'})</p>
+                    <p className="text-[11px] opacity-85">
+                      RouterOS {probeResult.resource.routeros_version} • CPU {probeResult.resource.cpu_load}% • RAM {probeResult.resource.ram_usage}% • Uptime {probeResult.resource.uptime}
+                    </p>
+                  </>
+                ) : probeResult.online ? (
+                  <p>Host terjangkau, tapi API port {formData.api_port} tidak merespons atau login API gagal. Cek username/password/API service.</p>
+                ) : (
+                  <p>Router tidak terjangkau pada port API/SSH/WinBox.</p>
+                )}
+              </div>
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Model Router</label>
-              <select
-                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734] focus:ring-1 focus:ring-[#d96734] bg-white"
-                value={formData.model}
-                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-              >
-                <option value="CCR2004-16G-2S+">CCR2004-16G-2S+</option>
-                <option value="RB4011iGS+">RB4011iGS+</option>
-                <option value="RB450Gx4">RB450Gx4</option>
-                <option value="RB750Gr3 (hEX)">RB750Gr3 (hEX)</option>
-                <option value="CCR1009-7G-1C-1S+">CCR1009-7G-1C-1S+</option>
-                <option value="CHR (Cloud Hosted Router)">CHR (Cloud Hosted Router)</option>
-              </select>
-            </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
@@ -138,6 +173,29 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Username MikroTik *</label>
+              <input
+                type="text"
+                required
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734]"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+              <input
+                type="password"
+                placeholder="Kosongkan bila tanpa password"
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734]"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              />
             </div>
           </div>
 
@@ -173,47 +231,59 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Username MikroTik *</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Perangkat</label>
               <input
                 type="text"
-                required
-                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734]"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                placeholder="Otomatis dari Identity / isi manual"
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734] focus:ring-1 focus:ring-[#d96734]"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Model / Board Name</label>
               <input
-                type="password"
-                placeholder="Kosongkan bila tanpa password"
-                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734]"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                type="text"
+                placeholder="Otomatis dari /system/resource"
+                className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#d96734] focus:ring-1 focus:ring-[#d96734] bg-slate-50"
+                value={formData.model}
+                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              onClick={handleProbe}
+              disabled={probing}
+              className="px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl flex items-center gap-1.5 transition-colors"
             >
-              Batal
+              {probing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Radar className="w-3.5 h-3.5" />}
+              <span>Deteksi Resource</span>
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2 text-xs font-semibold text-white bg-[#d96734] hover:bg-[#c25828] rounded-xl flex items-center gap-2 shadow-sm transition-colors"
-            >
-              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              <span>Simpan Router</span>
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-5 py-2 text-xs font-semibold text-white bg-[#d96734] hover:bg-[#c25828] rounded-xl flex items-center gap-2 shadow-sm transition-colors"
+              >
+                {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Simpan Router</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>
     </div>
   );
 }
-

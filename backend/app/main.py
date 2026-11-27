@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 
 from . import database as db
-from .mikrotik_client import probe_router, SimulatedMikrotikShell
+from .mikrotik_client import probe_router, fetch_mikrotik_resource, SimulatedMikrotikShell
 
 try:
     import paramiko
@@ -82,8 +82,8 @@ class UserRegister(BaseModel):
     full_name: Optional[str] = "Operator"
 
 class DeviceCreate(BaseModel):
-    name: str
-    model: Optional[str] = "RB450Gx4"
+    name: Optional[str] = None
+    model: Optional[str] = None
     host: Optional[str] = None
     ip_address: Optional[str] = None
     api_port: Optional[int] = 8728
@@ -93,7 +93,17 @@ class DeviceCreate(BaseModel):
     password: Optional[str] = ""
     group_name: Optional[str] = None
     group_id: Optional[int] = None
-    routeros_version: Optional[str] = "7.21.4 long-term"
+    routeros_version: Optional[str] = None
+
+
+class DeviceProbeRequest(BaseModel):
+    host: Optional[str] = None
+    ip_address: Optional[str] = None
+    api_port: Optional[int] = 8728
+    ssh_port: Optional[int] = 22
+    winbox_port: Optional[int] = 8291
+    username: Optional[str] = "admin"
+    password: Optional[str] = ""
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
@@ -284,6 +294,29 @@ def list_devices_endpoint(
     return {"devices": devs, "total": len(devs)}
 
 
+@app.post("/api/devices/probe-resource")
+def probe_device_resource_endpoint(body: DeviceProbeRequest, user: dict = Depends(get_current_user)):
+    target_host = (body.host or body.ip_address or "").strip()
+    if not target_host:
+        raise HTTPException(status_code=400, detail="IP Manajemen / Host wajib diisi")
+
+    probe = probe_router(target_host, body.api_port or 8728, body.ssh_port or 22, body.winbox_port or 8291)
+    resource = None
+    if probe["api_port"]:
+        resource = fetch_mikrotik_resource(
+            target_host,
+            port=body.api_port or 8728,
+            username=body.username or "admin",
+            password=body.password or "",
+        )
+
+    return {
+        "online": probe["online"],
+        "ports": probe,
+        "resource": resource,
+    }
+
+
 @app.post("/api/devices")
 def create_device_endpoint(body: DeviceCreate, user: dict = Depends(get_current_user)):
     target_host = (body.host or body.ip_address or "").strip()
@@ -297,12 +330,37 @@ def create_device_endpoint(body: DeviceCreate, user: dict = Depends(get_current_
         if matched:
             group_name = matched["name"]
 
-    # Auto-probe router ports
-    probe = probe_router(target_host, body.api_port, body.ssh_port, body.winbox_port)
+    # Auto-probe router ports & fetch /system/resource from RouterOS API
+    probe = probe_router(target_host, body.api_port or 8728, body.ssh_port or 22, body.winbox_port or 8291)
+    resource = None
+    if probe["api_port"]:
+        resource = fetch_mikrotik_resource(
+            target_host,
+            port=body.api_port or 8728,
+            username=body.username or "admin",
+            password=body.password or "",
+        )
+
     data = body.dict()
     data["host"] = target_host
     data["group_name"] = group_name
     data["status"] = "online" if probe["online"] else "offline"
+
+    if resource:
+        if not (body.model and body.model.strip()):
+            data["model"] = resource["model"]
+        if not (body.name and body.name.strip()):
+            data["name"] = resource.get("identity") or f"MikroTik-{target_host}"
+        data["routeros_version"] = body.routeros_version or resource["routeros_version"]
+        data["uptime"] = resource["uptime"]
+        data["cpu_load"] = resource["cpu_load"]
+        data["ram_usage"] = resource["ram_usage"]
+        data["disk_usage"] = resource["disk_usage"]
+    else:
+        data["model"] = (body.model or "").strip() or "MikroTik Router"
+        data["name"] = (body.name or "").strip() or f"Router-{target_host}"
+        data["routeros_version"] = body.routeros_version or "7.x"
+
     new_id = db.add_device(user["id"], data)
     
     # Also add as a node in topology automatically
@@ -311,8 +369,8 @@ def create_device_endpoint(body: DeviceCreate, user: dict = Depends(get_current_
         "id": node_id,
         "device_id": new_id,
         "node_type": "router",
-        "label": body.name,
-        "model": body.model,
+        "label": data["name"],
+        "model": data["model"],
         "ip": target_host,
         "status": data["status"],
         "pos_x": 100 + (new_id * 80) % 400,
@@ -353,12 +411,33 @@ def test_device_connection(device_id: int, user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Device tidak ditemukan")
     probe = probe_router(dev["host"], dev["api_port"], dev["ssh_port"], dev["winbox_port"])
     new_status = "online" if probe["online"] else "offline"
-    db.update_device(device_id, user["id"], {"status": new_status})
+    updates = {"status": new_status}
+
+    resource = None
+    if probe["api_port"]:
+        resource = fetch_mikrotik_resource(
+            dev["host"],
+            port=dev["api_port"],
+            username=dev["username"],
+            password=dev["password"],
+        )
+        if resource:
+            updates.update({
+                "model": resource["model"],
+                "routeros_version": resource["routeros_version"],
+                "uptime": resource["uptime"],
+                "cpu_load": resource["cpu_load"],
+                "ram_usage": resource["ram_usage"],
+                "disk_usage": resource["disk_usage"],
+            })
+
+    db.update_device(device_id, user["id"], updates)
     return {
         "device_id": device_id,
         "host": dev["host"],
         "status": new_status,
-        "ports": probe
+        "ports": probe,
+        "resource": resource,
     }
 
 
