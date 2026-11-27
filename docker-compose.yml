@@ -3,15 +3,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: mikrotik-nms-backend
+    container_name: nms-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
-    volumes:
-      - nms-data:/app/data
     environment:
       - DATABASE_PATH=/app/data/mikrotik_nms.db
-      - NMS_SECRET_KEY=mikrotik_cloud_nms_super_secret_production_key_2026
+      - NMS_SECRET_KEY=${NMS_SECRET_KEY:-mikrotik_cloud_nms_secret_key_2026}
+    volumes:
+      - nms-data:/app/data
     networks:
       - nms-network
 
@@ -19,10 +17,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: mikrotik-nms-frontend
+    container_name: nms-frontend
     restart: unless-stopped
     ports:
-      - "5173:80"
+      - "8082:80"
     depends_on:
       - backend
     networks:
