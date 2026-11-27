@@ -3,6 +3,7 @@ name: Deploy NMS to VM
 on:
   push:
     branches: [dev]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -21,7 +22,7 @@ jobs:
 
             # Clone atau pull repo
             if [ ! -d /opt/mikrotik-cloud-nms ]; then
-              git clone https://${{ secrets.GH_TOKEN }}@github.com/aryusufn-new/mikrotik-cloud-nms.git /opt/mikrotik-cloud-nms
+              git clone https://github.com/aryusufn-new/mikrotik-cloud-nms.git /opt/mikrotik-cloud-nms
               cd /opt/mikrotik-cloud-nms
               git checkout dev
             else
