@@ -84,13 +84,15 @@ class UserRegister(BaseModel):
 class DeviceCreate(BaseModel):
     name: str
     model: Optional[str] = "RB450Gx4"
-    host: str
+    host: Optional[str] = None
+    ip_address: Optional[str] = None
     api_port: Optional[int] = 8728
     ssh_port: Optional[int] = 22
     winbox_port: Optional[int] = 8291
     username: Optional[str] = "admin"
     password: Optional[str] = ""
-    group_name: Optional[str] = "Default"
+    group_name: Optional[str] = None
+    group_id: Optional[int] = None
     routeros_version: Optional[str] = "7.21.4 long-term"
 
 class DeviceUpdate(BaseModel):
@@ -284,9 +286,22 @@ def list_devices_endpoint(
 
 @app.post("/api/devices")
 def create_device_endpoint(body: DeviceCreate, user: dict = Depends(get_current_user)):
+    target_host = (body.host or body.ip_address or "").strip()
+    if not target_host:
+        raise HTTPException(status_code=400, detail="IP Manajemen / Host wajib diisi")
+
+    group_name = body.group_name or "Default"
+    if not body.group_name and body.group_id:
+        groups = db.list_groups(user["id"])
+        matched = next((g for g in groups if g["id"] == body.group_id), None)
+        if matched:
+            group_name = matched["name"]
+
     # Auto-probe router ports
-    probe = probe_router(body.host, body.api_port, body.ssh_port, body.winbox_port)
+    probe = probe_router(target_host, body.api_port, body.ssh_port, body.winbox_port)
     data = body.dict()
+    data["host"] = target_host
+    data["group_name"] = group_name
     data["status"] = "online" if probe["online"] else "offline"
     new_id = db.add_device(user["id"], data)
     
@@ -298,7 +313,7 @@ def create_device_endpoint(body: DeviceCreate, user: dict = Depends(get_current_
         "node_type": "router",
         "label": body.name,
         "model": body.model,
-        "ip": body.host,
+        "ip": target_host,
         "status": data["status"],
         "pos_x": 100 + (new_id * 80) % 400,
         "pos_y": 150 + (new_id * 60) % 300

@@ -49,6 +49,7 @@ export default function AppLayout() {
           onSuccess={() => {
             setIsAddRouterOpen(false);
             fetchDeviceStats();
+            window.dispatchEvent(new Event('devices-updated'));
           }}
         />
       )}

@@ -39,12 +39,23 @@ export default function AddRouterModal({ isOpen, onClose, onSuccess }) {
     setLoading(true);
     setError(null);
     try {
-      await createDevice(formData);
+      const selectedGroup = groups.find(g => g.id === formData.group_id);
+      await createDevice({
+        ...formData,
+        host: formData.ip_address,
+        group_name: selectedGroup?.name || 'Default',
+      });
       setLoading(false);
       onSuccess();
     } catch (err) {
       setLoading(false);
-      setError(err.response?.data?.detail || 'Gagal menambahkan router. Pastikan parameter sudah benar.');
+      const detail = err.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+        : typeof detail === 'string'
+        ? detail
+        : 'Gagal menambahkan router. Pastikan parameter sudah benar.';
+      setError(msg);
     }
   };
 

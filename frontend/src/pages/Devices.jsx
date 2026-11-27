@@ -38,6 +38,9 @@ export default function Devices() {
 
   useEffect(() => {
     fetchDevicesList();
+    const onUpdated = () => fetchDevicesList();
+    window.addEventListener('devices-updated', onUpdated);
+    return () => window.removeEventListener('devices-updated', onUpdated);
   }, []);
 
   const handleDelete = async (id, name) => {
@@ -53,22 +56,23 @@ export default function Devices() {
   };
 
   const filteredDevices = devices.filter((d) => {
+    const isOnline = (d.status || '').toLowerCase() === 'online';
     const matchFilter = 
       filter === 'all' ? true :
-      filter === 'online' ? d.status === 'Online' :
-      d.status === 'Offline';
+      filter === 'online' ? isOnline :
+      !isOnline;
 
     const matchSearch = 
-      d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.ip_address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.model || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.ip_address || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (d.group_name && d.group_name.toLowerCase().includes(searchTerm.toLowerCase()));
 
     return matchFilter && matchSearch;
   });
 
-  const onlineCount = devices.filter(d => d.status === 'Online').length;
-  const offlineCount = devices.filter(d => d.status === 'Offline').length;
+  const onlineCount = devices.filter(d => (d.status || '').toLowerCase() === 'online').length;
+  const offlineCount = devices.length - onlineCount;
 
   return (
     <div className="space-y-5">
@@ -188,11 +192,18 @@ export default function Devices() {
 
                   {/* Status */}
                   <td className="py-4 px-4 whitespace-nowrap">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                      <span>Online</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1">Terbaca 23.01.21 WIB</p>
+                    {(d.status || '').toLowerCase() === 'online' ? (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span>Online</span>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                        <span>Offline</span>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-slate-400 mt-1">Terbaca baru saja</p>
                   </td>
 
                   {/* IP Manajemen */}

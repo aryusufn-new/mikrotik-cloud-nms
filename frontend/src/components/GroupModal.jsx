@@ -20,7 +20,13 @@ export default function GroupModal({ isOpen, onClose, onSuccess }) {
       onSuccess();
     } catch (err) {
       setLoading(false);
-      setError(err.response?.data?.detail || 'Gagal membuat grup perangkat.');
+      const detail = err.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+        : typeof detail === 'string'
+        ? detail
+        : 'Gagal membuat grup perangkat.';
+      setError(msg);
     }
   };
 
