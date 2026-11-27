@@ -109,12 +109,14 @@ class DeviceUpdate(BaseModel):
     name: Optional[str] = None
     model: Optional[str] = None
     host: Optional[str] = None
+    ip_address: Optional[str] = None
     api_port: Optional[int] = None
     ssh_port: Optional[int] = None
     winbox_port: Optional[int] = None
     username: Optional[str] = None
     password: Optional[str] = None
     group_name: Optional[str] = None
+    group_id: Optional[int] = None
     routeros_version: Optional[str] = None
     status: Optional[str] = None
 
@@ -390,10 +392,37 @@ def get_device_endpoint(device_id: int, user: dict = Depends(get_current_user)):
 
 @app.put("/api/devices/{device_id}")
 def update_device_endpoint(device_id: int, body: DeviceUpdate, user: dict = Depends(get_current_user)):
-    ok = db.update_device(device_id, user["id"], body.dict(exclude_unset=True))
-    if not ok:
+    existing = db.get_device(device_id, user["id"])
+    if not existing:
         raise HTTPException(status_code=404, detail="Device tidak ditemukan")
-    return db.get_device(device_id, user["id"])
+
+    updates = body.dict(exclude_unset=True)
+    if "ip_address" in updates and not updates.get("host"):
+        updates["host"] = updates.pop("ip_address")
+    else:
+        updates.pop("ip_address", None)
+
+    if "group_id" in updates and not updates.get("group_name"):
+        groups = db.list_groups(user["id"])
+        matched = next((g for g in groups if g["id"] == updates["group_id"]), None)
+        if matched:
+            updates["group_name"] = matched["name"]
+    updates.pop("group_id", None)
+
+    db.update_device(device_id, user["id"], updates)
+    updated = db.get_device(device_id, user["id"])
+
+    # Sinkronkan node topologi jika ada
+    db.save_topology_node(user["id"], {
+        "id": f"node-{device_id}",
+        "device_id": device_id,
+        "node_type": "router",
+        "label": updated["name"],
+        "model": updated["model"],
+        "ip": updated["host"],
+        "status": updated["status"],
+    })
+    return updated
 
 
 @app.delete("/api/devices/{device_id}")

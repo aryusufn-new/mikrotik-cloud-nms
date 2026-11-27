@@ -14,6 +14,7 @@ import {
   Pencil
 } from 'lucide-react';
 import { getDevices, deleteDevice } from '../api';
+import AddRouterModal from '../components/AddRouterModal';
 
 export default function Devices() {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export default function Devices() {
   const [filter, setFilter] = useState('all'); // all, online, offline
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [editingDevice, setEditingDevice] = useState(null);
 
   const fetchDevicesList = async () => {
     try {
@@ -181,8 +183,12 @@ export default function Devices() {
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-slate-800 text-sm">{d.name}</span>
-                          <button className="text-slate-300 hover:text-slate-500">
-                            <Pencil className="w-3 h-3" />
+                          <button
+                            onClick={() => setEditingDevice(d)}
+                            title="Edit router"
+                            className="p-1 rounded-lg text-slate-400 hover:text-[#d96734] hover:bg-orange-50 transition-colors"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
                           </button>
                         </div>
                         <p className="text-[11px] text-slate-400">{d.model} • {d.group_name || 'Default'}</p>
@@ -316,6 +322,20 @@ export default function Devices() {
           </div>
         </div>
       </div>
+
+      {/* Edit Router Modal */}
+      {editingDevice && (
+        <AddRouterModal
+          isOpen={!!editingDevice}
+          initialDevice={editingDevice}
+          onClose={() => setEditingDevice(null)}
+          onSuccess={() => {
+            setEditingDevice(null);
+            fetchDevicesList();
+            if (globalRefresh) globalRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }
